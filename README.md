@@ -2,7 +2,7 @@
 
 Maquette 3D interactive d'un projet de loft aménagé dans un hangar de **14 × 18 m** (6,5 m sous charpente), à visiter directement dans le navigateur.
 
-**Voir la maquette :** ouvrir `index.html` dans Edge ou Chrome, ou utiliser le lien GitHub Pages du dépôt (Settings → Pages).
+**Voir la maquette en ligne : https://karrerl.github.io/loft-hangar/** (ou ouvrir `index.html` dans Edge ou Chrome).
 
 ## Ce qu'on peut faire
 
