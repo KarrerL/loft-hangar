@@ -20,7 +20,22 @@
   label { display:block; font-size:12px; margin:2px 0; cursor:pointer; }
   .lbl { position:absolute; transform:translate(-50%,-100%); background:rgba(20,20,22,.78); color:#fff; font-size:11px; padding:2px 7px; border-radius:6px; white-space:nowrap; pointer-events:none; }
   .lbl.gym { background:rgba(181,101,46,.92); }
-  body.noui #ui, body.noui #hint { display:none; }
+  body.noui #ui, body.noui #hint, body.noui #menuBtn { display:none; }
+  canvas { touch-action:none; }
+  #menuBtn { display:none; }
+  #joy { position:absolute; left:24px; bottom:calc(28px + env(safe-area-inset-bottom)); width:130px; height:130px; border-radius:50%; background:rgba(255,255,255,.18); border:2px solid rgba(255,255,255,.55); touch-action:none; z-index:2; }
+  #joyKnob { position:absolute; left:50%; top:50%; width:56px; height:56px; margin:-28px 0 0 -28px; border-radius:50%; background:rgba(255,255,255,.8); pointer-events:none; }
+  #exitBtn { position:absolute; right:12px; bottom:calc(28px + env(safe-area-inset-bottom)); z-index:2; border:0; border-radius:10px; padding:10px 14px; background:rgba(20,20,22,.82); color:#fff; font-size:14px; }
+  @media (max-width: 700px) {
+    #menuBtn { display:block; position:absolute; top:10px; left:10px; z-index:3; border:0; border-radius:10px; padding:9px 14px; background:var(--accent); color:#fff; font-size:14px; font-weight:600; }
+    #ui { top:56px; left:8px; right:8px; max-width:none; max-height:calc(100dvh - 150px); overflow:auto; padding:10px 12px; z-index:3; }
+    #ui.closed { display:none; }
+    #ui h1 { font-size:15px; }
+    #ui p { display:none; }
+    .views button { padding:7px 10px; font-size:13px; }
+    .lbl { font-size:10px; padding:1px 5px; }
+    html body #hint { top:10px; bottom:auto; left:auto; right:10px; transform:none; max-width:calc(100vw - 120px); font-size:11px; text-align:left; }
+  }
   .cars { border-top:1px solid rgba(128,128,128,.3); padding-top:8px; margin-bottom:6px; }
   .cars-t { font-size:12px; font-weight:600; margin-bottom:6px; }
   .fbtn { display:inline-block; border:1px solid rgba(128,128,128,.35); background:transparent; color:var(--ink); border-radius:8px; padding:4px 8px; font-size:12px; cursor:pointer; margin:0 4px 4px 0; }
@@ -45,6 +60,7 @@ window.HANGAR_MODELS = {"bed": "Z2xURgIAAAAQeLUA1FIAAEpTT057ImFzc2V0Ijp7ImdlbmVy
 </script>
 </head>
 <body>
+<button id="menuBtn" aria-controls="ui">Menu</button>
 <div id="ui">
   <h1>Loft optimisé · 14 × 18 m · visite 3D</h1>
   <p>Glisser pour tourner, molette pour zoomer, clic droit pour se déplacer. Ou visite à pied en vue subjective.</p>
@@ -81,6 +97,8 @@ window.HANGAR_MODELS = {"bed": "Z2xURgIAAAAQeLUA1FIAAEpTT057ImFzc2V0Ijp7ImdlbmVy
     </ul><p>Modèles Sketchfab, optimisés (simplification, textures WebP) pour le web. Licences : <a href="https://creativecommons.org/licenses/by/4.0/deed.fr" target="_blank" rel="noopener">CC BY 4.0</a>, <a href="https://creativecommons.org/licenses/by-nc/4.0/deed.fr" target="_blank" rel="noopener">CC BY-NC 4.0</a>.</p></details>
 </div>
 <div id="hint" hidden>Clique dans la vue pour la contrôler · ZQSD ou flèches : marcher · souris : regarder · Maj : courir · Échap : libérer la souris</div>
+<div id="joy" hidden><div id="joyKnob"></div></div>
+<button id="exitBtn" hidden>Quitter la visite</button>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -93,7 +111,8 @@ const params = new URLSearchParams(location.search);
 if (params.get('ui') === '0') document.body.classList.add('noui');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const coarse = matchMedia('(pointer: coarse)').matches;   // téléphone / tablette
+renderer.setPixelRatio(Math.min(devicePixelRatio, coarse ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -656,7 +675,12 @@ const views = {
   balcony: { p: [9.5, 4.3, 17.6], t: [7.0, 0.8, 4.5], upper: true },
 };
 const cLabels = document.getElementById('cLabels'), cUpper = document.getElementById('cUpper'), cCeil = document.getElementById('cCeil');
-function setView(k) { exitWalk(); const v = views[k]; camera.position.set(...v.p); controls.target.set(...v.t); cUpper.checked = v.upper; controls.update(); }
+function setView(k) {
+  exitWalk(); const portrait = camera.aspect < 1, v = (portrait && views[k].portrait) || views[k];
+  const back = portrait && !views[k].portrait ? 1.35 : 1;   // en portrait : cadrage dédié, sinon on recule
+  camera.fov = fovFor(false); camera.updateProjectionMatrix();
+  controls.target.set(...v.t); camera.position.set(...v.p.map((c, i) => v.t[i] + (c - v.t[i]) * back)); cUpper.checked = v.upper; controls.update();
+}
 document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => setView(b.dataset.v));
 
 // ---------- visite à pied (première personne) : murs, vitrages et garde-corps bloquent, l'escalier monte à l'étage
@@ -677,7 +701,8 @@ function tryMove(nx, nz) {
 }
 function updateWalk(dt) {
   const k = walk.keys, sp = (k.ShiftLeft || k.ShiftRight ? 3.2 : 1.5) * Math.min(dt, .05);
-  const f = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0), s = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
+  const clamp1 = v => Math.max(-1, Math.min(1, v));
+  const f = clamp1((k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) + joy.f), s = clamp1((k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0) + joy.s);
   const sn = Math.sin(walk.yaw), cs = Math.cos(walk.yaw);
   const dx = (-sn * f + cs * s) * sp, dz = (-cs * f - sn * s) * sp;
   if (dx) tryMove(walk.x + dx, walk.z); if (dz) tryMove(walk.x, walk.z + dz);
@@ -686,19 +711,21 @@ function updateWalk(dt) {
   camera.position.set(walk.x, walk.floor + 1.62, walk.z);
   camera.rotation.set(walk.pitch, walk.yaw, 0, 'YXZ');
 }
-function enterWalk(x = 3.4, z = 17.0, yaw = 0, pitch = -.05, lvl = 0) {
+function enterWalk(x = 3.95, z = 17.0, yaw = 0, pitch = -.05, lvl = 0) {
   Object.assign(walk, { on: true, x, z, yaw, pitch, floor: lvl ? FT : 0 });
-  controls.enabled = false; cLabels.checked = false; camera.fov = 72; camera.updateProjectionMatrix();
+  controls.enabled = false; cLabels.checked = false; camera.fov = fovFor(true); camera.updateProjectionMatrix();
   hint.hidden = false; walkBtn.textContent = 'Quitter la visite';
+  joyEl.hidden = !coarse; exitBtn.hidden = false; if (small.matches) setMenu(false);
 }
 function exitWalk() {
   if (!walk.on) return;
-  walk.on = false; controls.enabled = true; camera.fov = 55; camera.updateProjectionMatrix();
+  walk.on = false; controls.enabled = true; camera.fov = fovFor(false); camera.updateProjectionMatrix();
+  joyEl.hidden = true; exitBtn.hidden = true; joy.f = joy.s = 0; look = null;
   if (document.pointerLockElement) document.exitPointerLock();
   hint.hidden = true; walkBtn.textContent = 'Visite à pied (intérieur)';
 }
 walkBtn.onclick = () => { if (walk.on) setView('overview'); else enterWalk(); };
-renderer.domElement.addEventListener('click', () => { if (walk.on && !document.pointerLockElement) renderer.domElement.requestPointerLock(); });
+renderer.domElement.addEventListener('click', () => { if (walk.on && !coarse && !document.pointerLockElement && renderer.domElement.requestPointerLock) renderer.domElement.requestPointerLock(); });
 addEventListener('mousemove', e => {
   if (!walk.on || (!document.pointerLockElement && e.buttons !== 1)) return;
   walk.yaw -= e.movementX * .0022; walk.pitch = Math.max(-1.4, Math.min(1.4, walk.pitch - e.movementY * .0022));
@@ -822,11 +849,39 @@ getModel('indoor_plant').then(m => {
   for (const p of plantSpots) { p.pg.visible = false; placeModel(m, { parent: p.pg.parent, x: p.x, y: p.y, z: p.z, height: 1.25 * p.s, rot: (p.x * 7 + p.z * 3) % 6.28 }); }
 }).catch(e => console.warn(e));
 
+// ---------- téléphone : menu repliable, joystick pour marcher, glisser pour regarder
+const fovFor = (walking) => (walking ? 72 : 55) * (camera.aspect < 1 ? 1.35 : 1);
+const uiEl = document.getElementById('ui'), menuBtn = document.getElementById('menuBtn'), small = matchMedia('(max-width: 700px)');
+function setMenu(open) { uiEl.classList.toggle('closed', !open); menuBtn.textContent = open ? 'Fermer' : 'Menu'; }
+menuBtn.onclick = () => setMenu(uiEl.classList.contains('closed'));
+if (small.matches) { setMenu(false); if (params.get('labels') !== '1') cLabels.checked = false; }   // étiquettes masquées par défaut sur téléphone
+views.overview.portrait = { p: [7, 23, 31], t: [7, 0.5, 8.2], upper: true };   // vue dans la longueur du hangar
+document.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => { if (small.matches) setMenu(false); }));
+const exitBtn = document.getElementById('exitBtn'); exitBtn.onclick = () => setView('overview');
+if (coarse) hint.textContent = 'Joystick en bas à gauche : marcher · glisse ailleurs sur l\'écran : regarder';
+const joy = { f: 0, s: 0, id: null }, joyEl = document.getElementById('joy'), knob = document.getElementById('joyKnob');
+function moveJoy(e) {
+  const r = joyEl.getBoundingClientRect(), R = r.width / 2; let dx = e.clientX - r.left - R, dy = e.clientY - r.top - R;
+  const d = Math.hypot(dx, dy), m = Math.min(d, R) / (d || 1); dx *= m; dy *= m;
+  knob.style.transform = `translate(${dx}px, ${dy}px)`; joy.s = dx / R; joy.f = -dy / R;
+}
+joyEl.addEventListener('pointerdown', e => { joy.id = e.pointerId; joyEl.setPointerCapture(e.pointerId); moveJoy(e); });
+joyEl.addEventListener('pointermove', e => { if (e.pointerId === joy.id) moveJoy(e); });
+for (const t of ['pointerup', 'pointercancel']) joyEl.addEventListener(t, e => { if (e.pointerId !== joy.id) return; joy.id = null; joy.f = joy.s = 0; knob.style.transform = ''; });
+let look = null;
+renderer.domElement.addEventListener('pointerdown', e => { if (walk.on && e.pointerType !== 'mouse') look = { id: e.pointerId, x: e.clientX, y: e.clientY }; });
+addEventListener('pointermove', e => {
+  if (!look || e.pointerId !== look.id) return;
+  walk.yaw -= (e.clientX - look.x) * .005; walk.pitch = Math.max(-1.4, Math.min(1.4, walk.pitch - (e.clientY - look.y) * .005));
+  look.x = e.clientX; look.y = e.clientY;
+});
+for (const t of ['pointerup', 'pointercancel']) addEventListener(t, e => { if (look && e.pointerId === look.id) look = null; });
+
 if (params.get('labels') === '0') cLabels.checked = false;
 setView(params.get('view') in views ? params.get('view') : 'overview');
-if (params.get('walk')) enterWalk(+params.get('x') || 3.4, +params.get('z') || 17, +params.get('yaw') || 0, +params.get('pitch') || -.05, +params.get('lvl') || 0);
+if (params.get('walk')) enterWalk(+params.get('x') || 3.95, +params.get('z') || 17, +params.get('yaw') || 0, +params.get('pitch') || -.05, +params.get('lvl') || 0);
 
-addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.fov = fovFor(walk.on); camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 const tmp = new THREE.Vector3(), clock = new THREE.Clock();
 function tick() {
   const dt = clock.getDelta();
